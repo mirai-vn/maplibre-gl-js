@@ -256,3 +256,5 @@ export {
     importScriptInWorkers,
     createTileMesh
 };
+
+export { RGBAImage } from './util/image';
