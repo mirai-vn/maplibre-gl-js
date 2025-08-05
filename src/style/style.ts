@@ -18,7 +18,7 @@ import {type Source} from '../source/source';
 import {type QueryRenderedFeaturesOptions, type QueryRenderedFeaturesOptionsStrict, type QueryRenderedFeaturesResults, type QueryRenderedFeaturesResultsItem, type QuerySourceFeatureOptions, queryRenderedFeatures, queryRenderedSymbols, querySourceFeatures} from '../source/query_features';
 import {SourceCache} from '../source/source_cache';
 import {type GeoJSONSource} from '../source/geojson_source';
-import {latest as styleSpec, derefLayers as deref, emptyStyle, diff as diffStyles, type DiffCommand} from '@maplibre/maplibre-gl-style-spec';
+import {latest as styleSpec, derefLayers, emptyStyle, diff as diffStyles, type DiffCommand} from '@maplibre/maplibre-gl-style-spec';
 import {getGlobalWorkerPool} from '../util/global_worker_pool';
 import {rtlMainThreadPluginFactory} from '../source/rtl_text_plugin_main_thread';
 import {RTLPluginLoadedEventName} from '../source/rtl_text_plugin_status';
@@ -52,7 +52,8 @@ import type {
     SpriteSpecification,
     DiffOperations,
     ProjectionSpecification,
-    SkySpecification
+    SkySpecification,
+    StateSpecification
 } from '@maplibre/maplibre-gl-style-spec';
 import type {CanvasSourceSpecification} from '../source/canvas_source';
 import type {CustomLayerInterface} from './style_layer/custom_style_layer';
@@ -66,6 +67,7 @@ import {
 } from '../util/actor_messages';
 import {type Projection} from '../geo/projection/projection';
 import {createProjectionFromName} from '../geo/projection/projection_factory';
+import type {OverscaledTileID} from '../source/tile_id';
 
 const empty = emptyStyle() as StyleSpecification;
 /**
@@ -115,7 +117,7 @@ export type StyleSetterOptions = {
 };
 
 /**
- * Part of {@link Map#setStyle} options, transformStyle is a convenience function that allows to modify a style after it is fetched but before it is committed to the map state.
+ * Part of {@link Map.setStyle} options, transformStyle is a convenience function that allows to modify a style after it is fetched but before it is committed to the map state.
  *
  * This function exposes previous and next styles, it can be commonly used to support a range of functionalities like:
  *
@@ -141,7 +143,7 @@ export type StyleSetterOptions = {
  *           // make relative vector url like "../../" absolute
  *           ...nextStyle.sources.map(source => {
  *              if (source.url) {
-     *              source.url = new URL(source.url, "https://api.maptiler.com/tiles/osm-bright-gl-style/");
+ *                  source.url = new URL(source.url, "https://api.maptiler.com/tiles/osm-bright-gl-style/");
  *              }
  *              return source;
  *           }),
@@ -228,7 +230,7 @@ export class Style extends Evented {
     _spritesImagesIds: {[spriteId: string]: string[]};
     // image ids of all images loaded (sprite + user)
     _availableImages: Array<string>;
-
+    _globalState: Record<string, any>;
     crossTileSymbolIndex: CrossTileSymbolIndex;
     pauseablePlacement: PauseablePlacement;
     placement: Placement;
@@ -259,6 +261,7 @@ export class Style extends Evented {
         this.zoomHistory = new ZoomHistory();
         this._loaded = false;
         this._availableImages = [];
+        this._globalState = {};
 
         this._resetUpdates();
 
@@ -300,6 +303,82 @@ export class Style extends Evented {
             }
         }
     };
+
+    setGlobalStateProperty(name: string, value: any) {
+        this._checkLoaded();
+
+        const newValue = value === null ?
+            this.stylesheet.state?.[name]?.default ?? null :
+            value;
+
+        if (deepEqual(newValue, this._globalState[name])) {
+            return this;
+        }
+
+        this._globalState[name] = newValue;
+
+        const sourceIdsToReload = this._findGlobalStateAffectedSources([name]);
+
+        for (const id in this.sourceCaches) {
+            if (sourceIdsToReload.has(id)) {
+                this._reloadSource(id);
+                this._changed = true;
+            }
+        }
+    }
+
+    getGlobalState() {
+        return this._globalState;
+    }
+
+    setGlobalState(newStylesheetState: StateSpecification) {
+        this._checkLoaded();
+
+        const changedGlobalStateRefs = [];
+
+        for (const propertyName in newStylesheetState) {
+            const didChange = !deepEqual(this._globalState[propertyName], newStylesheetState[propertyName].default);
+
+            if (didChange) {
+                changedGlobalStateRefs.push(propertyName);
+                this._globalState[propertyName] = newStylesheetState[propertyName].default;
+            }
+        }
+
+        const sourceIdsToReload = this._findGlobalStateAffectedSources(changedGlobalStateRefs);
+
+        for (const id in this.sourceCaches) {
+            if (sourceIdsToReload.has(id)) {
+                this._reloadSource(id);
+                this._changed = true;
+            }
+        }
+    }
+
+    /**
+     * Find all sources that are affected by the global state changes.
+     * For example, if a layer filter uses global-state expression, this function will return the source id of that layer.
+     */
+    _findGlobalStateAffectedSources(globalStateRefs: string[]) {
+        if (globalStateRefs.length === 0) {
+            return new Set<string>();
+        }
+
+        const sourceIdsToReload = new Set<string>();
+
+        for (const layerId in this._layers) {
+            const layer = this._layers[layerId];
+            const layoutAffectingGlobalStateRefs = layer.getLayoutAffectingGlobalStateRefs();
+
+            for (const ref of globalStateRefs) {
+                if (layoutAffectingGlobalStateRefs.has(ref)) {
+                    sourceIdsToReload.add(layer.source);
+                }
+            }
+        }
+
+        return sourceIdsToReload;
+    }
 
     loadURL(url: string, options: StyleSwapOptions & StyleSetterOptions = {}, previousStyle?: StyleSpecification) {
         this.fire(new Event('dataloading', {dataType: 'style'}));
@@ -366,12 +445,14 @@ export class Style extends Evented {
 
         this.map.setTerrain(this.stylesheet.terrain ?? null);
 
+        this.setGlobalState(this.stylesheet.state ?? null);
+
         this.fire(new Event('data', {dataType: 'style'}));
         this.fire(new Event('style.load'));
     }
 
     private _createLayers() {
-        const dereferencedLayers = deref(this.stylesheet.layers);
+        const dereferencedLayers = derefLayers(this.stylesheet.layers);
 
         // Broadcast layers to workers first, so that expensive style processing (createStyleLayer)
         // can happen in parallel on both main and worker threads.
@@ -730,7 +811,7 @@ export class Style extends Evented {
         if (validate && emitValidationErrors(this, validateStyle(nextState))) return false;
 
         nextState = clone(nextState);
-        nextState.layers = deref(nextState.layers);
+        nextState.layers = derefLayers(nextState.layers);
 
         const changes = diffStyles(serializedStyle, nextState);
         const operations = this._getOperationsToPerform(changes);
@@ -810,6 +891,9 @@ export class Style extends Evented {
                     break;
                 case 'setProjection':
                     this.setProjection.apply(this, op.args);
+                    break;
+                case 'setGlobalState':
+                    operations.push(() => this.setGlobalState.apply(this, op.args));
                     break;
                 case 'setTransition':
                     operations.push(() => {});
@@ -1149,7 +1233,7 @@ export class Style extends Evented {
         }
 
         if (filter === null || filter === undefined) {
-            layer.filter = undefined;
+            layer.setFilter(undefined);
             this._updateLayer(layer);
             return;
         }
@@ -1158,7 +1242,7 @@ export class Style extends Evented {
             return;
         }
 
-        layer.filter = clone(filter);
+        layer.setFilter(clone(filter));
         this._updateLayer(layer);
     }
 
@@ -1467,7 +1551,11 @@ export class Style extends Evented {
                     serializedLayers,
                     queryGeometry,
                     paramsStrict,
-                    transform)
+                    transform,
+                    this.map.terrain ?
+                        (id: OverscaledTileID, x: number, y: number) =>
+                            this.map.terrain.getElevation(id, x, y) :
+                        undefined)
             );
         }
 

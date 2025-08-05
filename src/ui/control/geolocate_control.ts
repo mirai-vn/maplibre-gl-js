@@ -90,7 +90,7 @@ let noTimeout = false;
  *     trackUserLocation: true
  * }));
  * ```
- * @see [Locate the user](https://maplibre.org/maplibre-gl-js/docs/examples/locate-user/)
+ * @see [Locate the user](https://maplibre.org/maplibre-gl-js/docs/examples/locate-the-user/)
  *
  * ## Events
  *
@@ -482,32 +482,30 @@ export class GeolocateControl extends Evented implements IControl {
             return;
         }
 
-        if (this.options.trackUserLocation) {
-            if (error.code === 1) {
-                // PERMISSION_DENIED
-                this._watchState = 'OFF';
-                this._geolocateButton.classList.remove('maplibregl-ctrl-geolocate-waiting');
-                this._geolocateButton.classList.remove('maplibregl-ctrl-geolocate-active');
-                this._geolocateButton.classList.remove('maplibregl-ctrl-geolocate-active-error');
-                this._geolocateButton.classList.remove('maplibregl-ctrl-geolocate-background');
-                this._geolocateButton.classList.remove('maplibregl-ctrl-geolocate-background-error');
-                this._geolocateButton.disabled = true;
-                const title = this._map._getUIString('GeolocateControl.LocationNotAvailable');
-                this._geolocateButton.title = title;
-                this._geolocateButton.setAttribute('aria-label', title);
+        if (error.code === 1) {
+            // PERMISSION_DENIED
+            this._watchState = 'OFF';
+            this._geolocateButton.classList.remove('maplibregl-ctrl-geolocate-waiting');
+            this._geolocateButton.classList.remove('maplibregl-ctrl-geolocate-active');
+            this._geolocateButton.classList.remove('maplibregl-ctrl-geolocate-active-error');
+            this._geolocateButton.classList.remove('maplibregl-ctrl-geolocate-background');
+            this._geolocateButton.classList.remove('maplibregl-ctrl-geolocate-background-error');
+            this._geolocateButton.disabled = true;
+            const title = this._map._getUIString('GeolocateControl.LocationNotAvailable');
+            this._geolocateButton.title = title;
+            this._geolocateButton.setAttribute('aria-label', title);
 
-                if (this._geolocationWatchID !== undefined) {
-                    this._clearWatch();
-                }
-            } else if (error.code === 3 && noTimeout) {
-                // this represents a forced error state
-                // this was triggered to force immediate geolocation when a watch is already present
-                // see https://github.com/mapbox/mapbox-gl-js/issues/8214
-                // and https://w3c.github.io/geolocation-api/#example-5-forcing-the-user-agent-to-return-a-fresh-cached-position
-                return;
-            } else {
-                this._setErrorState();
+            if (this._geolocationWatchID !== undefined) {
+                this._clearWatch();
             }
+        } else if (error.code === 3 && noTimeout) {
+            // this represents a forced error state
+            // this was triggered to force immediate geolocation when a watch is already present
+            // see https://github.com/mapbox/mapbox-gl-js/issues/8214
+            // and https://w3c.github.io/geolocation-api/#example-5-forcing-the-user-agent-to-return-a-fresh-cached-position
+            return;
+        } else if (this.options.trackUserLocation) {
+            this._setErrorState();
         }
 
         if (this._watchState !== 'OFF' && this.options.showUserLocation) {
@@ -584,7 +582,7 @@ export class GeolocateControl extends Evented implements IControl {
         // the watch mode to background watch, so that the marker is updated but not the camera.
         if (this.options.trackUserLocation) {
             this._map.on('movestart', (event: any) => {
-                const fromResize = event.originalEvent && event.originalEvent.type === 'resize';
+                const fromResize = event?.[0] instanceof ResizeObserverEntry;
                 if (!event.geolocateSource && this._watchState === 'ACTIVE_LOCK' && !fromResize) {
                     this._watchState = 'BACKGROUND';
                     this._geolocateButton.classList.add('maplibregl-ctrl-geolocate-background');

@@ -1,6 +1,6 @@
 import {filterObject} from '../util/util';
 
-import {latest as styleSpec, supportsPropertyExpression} from '@maplibre/maplibre-gl-style-spec';
+import {featureFilter, latest as styleSpec, supportsPropertyExpression} from '@maplibre/maplibre-gl-style-spec';
 import {
     validateStyle,
     validateLayoutProperty,
@@ -10,7 +10,7 @@ import {
 import {Evented} from '../util/evented';
 import {Layout, Transitionable, type Transitioning, type Properties, PossiblyEvaluated, PossiblyEvaluatedPropertyValue} from './properties';
 
-import type {Bucket} from '../data/bucket';
+import type {Bucket, BucketParameters} from '../data/bucket';
 import type Point from '@mapbox/point-geometry';
 import type {FeatureFilter, FeatureState,
     LayerSpecification,
@@ -25,6 +25,7 @@ import type {Map} from '../ui/map';
 import type {StyleSetterOptions} from './style';
 import {type mat4} from 'gl-matrix';
 import type {VectorTileFeature} from '@mapbox/vector-tile';
+import type {UnwrappedTileID} from '../source/tile_id';
 
 const TRANSITION_SUFFIX = '-transition';
 
@@ -64,6 +65,14 @@ export type QueryIntersectsFeatureParams = {
      * The pixel coordinates are relative to the center of the screen.
      */
     pixelPosMatrix: mat4;
+    /**
+     * The unwrapped tile ID for the tile being queried.
+     */
+    unwrappedTileID: UnwrappedTileID;
+    /**
+     * A function to get the elevation of a point in tile coordinates.
+     */
+    getElevation: undefined | ((x: number, y: number) => number);
 };
 
 /**
@@ -95,6 +104,7 @@ export abstract class StyleLayer extends Evented {
 
     queryRadius?(bucket: Bucket): number;
     queryIntersectsFeature?(params: QueryIntersectsFeatureParams): boolean | number;
+    createBucket?(parameters: BucketParameters<any>): Bucket;
 
     constructor(layer: LayerSpecification | CustomLayerInterface, properties: Readonly<{
         layout?: Properties<any>;
@@ -104,7 +114,7 @@ export abstract class StyleLayer extends Evented {
 
         this.id = layer.id;
         this.type = layer.type;
-        this._featureFilter = {filter: () => true, needGeometry: false};
+        this._featureFilter = {filter: () => true, needGeometry: false, getGlobalStateRefs: () => new Set<string>()};
 
         if (layer.type === 'custom') return;
 
@@ -118,6 +128,7 @@ export abstract class StyleLayer extends Evented {
             this.source = layer.source;
             this.sourceLayer = layer['source-layer'];
             this.filter = layer.filter;
+            this._featureFilter = featureFilter(layer.filter);
         }
 
         if (properties.layout) {
@@ -140,6 +151,11 @@ export abstract class StyleLayer extends Evented {
         }
     }
 
+    setFilter(filter: FilterSpecification | void) {
+        this.filter = filter;
+        this._featureFilter = featureFilter(filter);
+    }
+
     getCrossfadeParameters() {
         return this._crossfadeParameters;
     }
@@ -150,6 +166,31 @@ export abstract class StyleLayer extends Evented {
         }
 
         return this._unevaluatedLayout.getValue(name);
+    }
+
+    /**
+     * Get list of global state references that are used within layout or filter properties.
+     * This is used to determine if layer source need to be reloaded when global state property changes.
+     *
+     */
+    getLayoutAffectingGlobalStateRefs() {
+        const globalStateRefs = new Set<string>();
+
+        if (this._unevaluatedLayout) {
+            for (const propertyName in this._unevaluatedLayout._values) {
+                const value = this._unevaluatedLayout._values[propertyName];
+
+                for (const globalStateRef of value.getGlobalStateRefs()) {
+                    globalStateRefs.add(globalStateRef);
+                }
+            }
+        }
+
+        for (const globalStateRef of this._featureFilter.getGlobalStateRefs()) {
+            globalStateRefs.add(globalStateRef);
+        }
+
+        return globalStateRefs;
     }
 
     setLayoutProperty(name: string, value: any, options: StyleSetterOptions = {}) {
@@ -201,7 +242,7 @@ export abstract class StyleLayer extends Evented {
 
             // if a cross-faded value is changed, we need to make sure the new icons get added to each tile's iconAtlas
             // so a call to _updateLayer is necessary, and we return true from this function so it gets called in
-            // Style#setPaintProperty
+            // Style.setPaintProperty
             return isDataDriven || wasDataDriven || isCrossFadedProperty || this._handleOverridablePaintPropertyUpdate(name, oldValue, newValue);
         }
     }

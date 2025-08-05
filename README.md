@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="https://maplibre.org/img/maplibre-logo-big.svg" alt="MapLibre Logo">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://maplibre.org/img/maplibre-logos/maplibre-logo-for-dark-bg.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://maplibre.org/img/maplibre-logos/maplibre-logo-for-light-bg.svg">
+    <img alt="MapLibre Logo" src="https://maplibre.org/img/maplibre-logos/maplibre-logo-for-light-bg.svg" width="200">
+  </picture>
 </p>
 
 # MapLibre GL JS
@@ -43,11 +47,11 @@ Full documentation for this library [is available here](https://maplibre.org/map
 
 Check out the features through [examples](https://maplibre.org/maplibre-gl-js/docs/examples/).
 
-| Showcases |      |
-| ---- | ---- |
-|![Display a map](https://maplibre.org/maplibre-gl-js/docs/assets/examples/simple-map.png)	|![Third party vector tile source](https://maplibre.org/maplibre-gl-js/docs/assets/examples/3d-terrain.png)	|
-|![Animate a series of images](https://maplibre.org/maplibre-gl-js/docs/assets/examples/animate-images.png)	|![Create a heatmap layer](https://maplibre.org/maplibre-gl-js/docs/assets/examples/heatmap-layer.png)	|
-|![3D buildings](https://maplibre.org/maplibre-gl-js/docs/assets/examples/3d-buildings.png)	|![Visualize population density](https://maplibre.org/maplibre-gl-js/docs/assets/examples/visualize-population-density.png)	|
+| Showcases                                                                                                  |                                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| ![Display a map](https://maplibre.org/maplibre-gl-js/docs/assets/examples/display-a-map.png)               | ![Third party vector tile source](https://maplibre.org/maplibre-gl-js/docs/assets/examples/3d-terrain.png)                 |
+| ![Animate a series of images](https://maplibre.org/maplibre-gl-js/docs/assets/examples/animate-images.png) | ![Create a heatmap layer](https://maplibre.org/maplibre-gl-js/docs/assets/examples/create-a-heatmap-layer.png)             |
+| ![3D buildings](https://maplibre.org/maplibre-gl-js/docs/assets/examples/display-buildings-in-3d.png)      | ![Visualize population density](https://maplibre.org/maplibre-gl-js/docs/assets/examples/visualize-population-density.png) |
 
 <br />
 
@@ -107,6 +111,8 @@ Silver:
 <a href="https://www.mappedin.com/"><img src="https://maplibre.org/img/mappedin-logo.svg" alt="Logo mappedin" width="25%"/></a>
 
 <a href="https://www.mapme.com/"><img src="https://maplibre.org/img/mapme-logo.svg" alt="Logo mapme" width="25%"/></a>
+
+<a href="https://www.maptiler.com/"><img src="https://maplibre.org/img/maptiler-logo.svg" alt="Logo maptiler" width="25%"/></a>
 
 Backers and Supporters:
 

@@ -24,14 +24,45 @@ function lngLatAsFixed(lngLat: LngLat, digits: number): {lat: string; lng: strin
     };
 }
 
+/**
+ * Since we are running in a Node.js environment, we need to mock the ResizeObserverEntry
+ */
+function createResizeObserverEntryMock() {
+    global.ResizeObserverEntry = class ResizeObserverEntry {
+        target: Element;
+        contentRect: DOMRectReadOnly;
+        borderBoxSize: ReadonlyArray<ResizeObserverSize>;
+        contentBoxSize: ReadonlyArray<ResizeObserverSize>;
+        devicePixelContentBoxSize: ReadonlyArray<ResizeObserverSize>;
+
+        constructor() {
+            this.target = document.createElement('div'); // Default target
+            this.contentRect = {
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+                left: 0,
+            } as DOMRectReadOnly;
+            this.borderBoxSize = [];
+            this.contentBoxSize = [];
+            this.devicePixelContentBoxSize = [];
+        }
+    };
+}
+
 describe('GeolocateControl with no options', () => {
     geolocation.use();
     let map;
 
     beforeEach(() => {
         beforeMapTest();
-        map = createMap(undefined, undefined);
+        map = createMap();
         (checkGeolocationSupport as unknown as MockInstance).mockImplementationOnce(() => Promise.resolve(true));
+        createResizeObserverEntryMock();
     });
 
     afterEach(() => {
@@ -53,6 +84,18 @@ describe('GeolocateControl with no options', () => {
         map.addControl(geolocate);
         await sleep(0);
         expect(geolocate._geolocateButton.disabled).toBeFalsy();
+    });
+
+    test('is disabled when permission is denied and tracking is off', async () => {
+        const geolocate = new GeolocateControl({trackUserLocation: false});
+        map.addControl(geolocate);
+        await sleep(0);
+
+        const click = new window.Event('click');
+        geolocate._geolocateButton.dispatchEvent(click);
+        geolocation.sendError({code: 1, message: 'permission was denied'});
+
+        expect(geolocate._geolocateButton.disabled).toBeTruthy();
     });
 
     test('has permissions', async () => {
@@ -471,7 +514,11 @@ describe('GeolocateControl with no options', () => {
         geolocation.send({latitude: 10, longitude: 20, accuracy: 30, timestamp: 40});
         await geolocatePromise;
         expect(geolocate._watchState).toBe('ACTIVE_LOCK');
-        window.dispatchEvent(new window.Event('resize'));
+
+        const moveStartPromise = map.once('movestart');
+        map._moving = false;
+        map.resize([new ResizeObserverEntry()]);
+        await moveStartPromise;
         expect(geolocate._watchState).toBe('ACTIVE_LOCK');
     });
 

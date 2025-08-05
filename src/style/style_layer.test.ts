@@ -16,7 +16,7 @@ describe('StyleLayer', () => {
     });
 });
 
-describe('StyleLayer#setPaintProperty', () => {
+describe('StyleLayer.setPaintProperty', () => {
     test('sets new property value', () => {
         const layer = createStyleLayer({
             'id': 'background',
@@ -93,34 +93,34 @@ describe('StyleLayer#setPaintProperty', () => {
         expect(layer.getPaintProperty('background-color-transition')).toEqual({duration: 400});
     });
 
-    test('emits on an invalid property value', () => new Promise<void>(done => {
+    test('emits on an invalid property value', async () => {
         const layer = createStyleLayer({
             'id': 'background',
             'type': 'background'
         });
 
-        layer.on('error', () => {
-            expect(layer.getPaintProperty('background-opacity')).toBeUndefined();
-            done();
-        });
+        const errorPromise = layer.once('error');
 
         layer.setPaintProperty('background-opacity', 5);
-    }));
 
-    test('emits on an invalid transition property value', () => new Promise<void>(done => {
+        await errorPromise;
+        expect(layer.getPaintProperty('background-opacity')).toBeUndefined();
+    });
+
+    test('emits on an invalid transition property value', async () => {
         const layer = createStyleLayer({
             'id': 'background',
             'type': 'background'
         });
 
-        layer.on('error', () => {
-            done();
-        });
+        const errorPromise = layer.once('error');
 
         layer.setPaintProperty('background-opacity-transition', {
             duration: -10
         });
-    }));
+
+        await expect(errorPromise).resolves.toBeDefined();
+    });
 
     test('can unset fill-outline-color #2886', () => {
         const layer = createStyleLayer({
@@ -155,7 +155,7 @@ describe('StyleLayer#setPaintProperty', () => {
         }) as FillStyleLayer;
 
         // setup: set and then unset fill-outline-color so that, when we then try
-        // to re-set it, StyleTransition#calculate() attempts interpolation
+        // to re-set it, StyleTransition.calculate() attempts interpolation
         layer.setPaintProperty('fill-outline-color', '#f00');
         layer.updateTransitions({} as TransitionParameters);
         layer.recalculate({zoom: 0, zoomHistory: {}} as EvaluationParameters, undefined);
@@ -187,7 +187,7 @@ describe('StyleLayer#setPaintProperty', () => {
 
 });
 
-describe('StyleLayer#setLayoutProperty', () => {
+describe('StyleLayer.setLayoutProperty', () => {
     test('sets new property value', () => {
         const layer = createStyleLayer({
             'id': 'symbol',
@@ -199,18 +199,17 @@ describe('StyleLayer#setLayoutProperty', () => {
         expect(layer.getLayoutProperty('text-transform')).toBe('lowercase');
     });
 
-    test('emits on an invalid property value', () => new Promise<void>(done => {
+    test('emits on an invalid property value', async () => {
         const layer = createStyleLayer({
             'id': 'symbol',
             'type': 'symbol'
         } as LayerSpecification);
 
-        layer.on('error', () => {
-            done();
-        });
+        const errorPromise = layer.once('error');
 
         layer.setLayoutProperty('text-transform', 'invalidValue');
-    }));
+        await expect(errorPromise).resolves.toBeDefined();
+    });
 
     test('updates property value', () => {
         const layer = createStyleLayer({
@@ -243,7 +242,50 @@ describe('StyleLayer#setLayoutProperty', () => {
     });
 });
 
-describe('StyleLayer#serialize', () => {
+describe('StyleLayer.getLayoutAffectingGlobalStateRefs', () => {
+    test('returns empty Set when no global state references', () => {
+        const layer = createStyleLayer({
+            'id': 'background',
+            'type': 'background',
+            'paint': {
+                'background-color': '#000000'
+            }
+        } as LayerSpecification);
+
+        expect(layer.getLayoutAffectingGlobalStateRefs()).toEqual(new Set());
+    });
+
+    test('returns global-state references from filter properties', () => {
+        const layer = createStyleLayer({
+            'id': 'symbol',
+            'type': 'symbol',
+            source: 'source',
+            //@ts-ignore
+            'filter': ['==', ['global-state', 'showSymbol'], true],
+        });
+
+        expect(layer.getLayoutAffectingGlobalStateRefs()).toEqual(new Set(['showSymbol']));
+    });
+
+    test('returns global-state references from layout properties', () => {
+        const layer = createStyleLayer({
+            'id': 'symbol',
+            'type': 'symbol',
+            source: 'source',
+            'layout': {
+                'text-field': '{text}',
+                //@ts-ignore
+                'text-size': ['global-state', 'textSize'],
+                //@ts-ignore
+                'text-transform': ['global-state', 'textTransform']
+            }
+        });
+
+        expect(layer.getLayoutAffectingGlobalStateRefs()).toEqual(new Set(['textSize', 'textTransform']));
+    });
+});
+
+describe('StyleLayer.serialize', () => {
 
     function createSymbolLayer(layer?) {
         return extend({
@@ -317,7 +359,7 @@ describe('StyleLayer#serialize', () => {
 
 });
 
-describe('StyleLayer#serialize', () => {
+describe('StyleLayer.serialize', () => {
 
     function createSymbolLayer(layer?) {
         return extend({
